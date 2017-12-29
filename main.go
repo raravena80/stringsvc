@@ -56,6 +56,11 @@ func main() {
 		decodeUppercaseRequest,
 		encodeResponse,
 	)
+	downcaseHandler := httptransport.NewServer(
+		makeDowncaseEndpoint(svc),
+		decodeDowncaseRequest,
+		encodeResponse,
+	)
 	countHandler := httptransport.NewServer(
 		makeCountEndpoint(svc),
 		decodeCountRequest,
@@ -63,6 +68,7 @@ func main() {
 	)
 
 	http.Handle("/uppercase", uppercaseHandler)
+	http.Handle("/downcase", downcaseHandler)
 	http.Handle("/count", countHandler)
 	http.Handle("/metrics", promhttp.Handler())
 	logger.Log("msg", "HTTP", "addr", *listen)

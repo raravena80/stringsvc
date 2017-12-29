@@ -29,8 +29,27 @@ func makeCountEndpoint(svc StringService) endpoint.Endpoint {
 	}
 }
 
+func makeDowncaseEndpoint(svc StringService) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		req := request.(downcaseRequest)
+		v, err := svc.Downcase(req.S)
+		if err != nil {
+			return downcaseResponse{v, err.Error()}, nil
+		}
+		return downcaseResponse{v, ""}, nil
+	}
+}
+
 func decodeUppercaseRequest(_ context.Context, r *http.Request) (interface{}, error) {
 	var request uppercaseRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func decodeDowncaseRequest(_ context.Context, r *http.Request) (interface{}, error) {
+	var request downcaseRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		return nil, err
 	}
@@ -47,6 +66,14 @@ func decodeCountRequest(_ context.Context, r *http.Request) (interface{}, error)
 
 func decodeUppercaseResponse(_ context.Context, r *http.Response) (interface{}, error) {
 	var response uppercaseResponse
+	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func decodeDowncaseResponse(_ context.Context, r *http.Response) (interface{}, error) {
+	var response downcaseResponse
 	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
 		return nil, err
 	}
@@ -71,6 +98,15 @@ type uppercaseRequest struct {
 }
 
 type uppercaseResponse struct {
+	V   string `json:"v"`
+	Err string `json:"err,omitempty"`
+}
+
+type downcaseRequest struct {
+	S string `json:"s"`
+}
+
+type downcaseResponse struct {
 	V   string `json:"v"`
 	Err string `json:"err,omitempty"`
 }
