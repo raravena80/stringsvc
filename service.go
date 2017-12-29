@@ -8,6 +8,7 @@ import (
 // StringService provides operations on strings.
 type StringService interface {
 	Uppercase(string) (string, error)
+	Downcase(string) (string, error)
 	Count(string) int
 }
 
@@ -22,6 +23,13 @@ func (stringService) Uppercase(s string) (string, error) {
 
 func (stringService) Count(s string) int {
 	return len(s)
+}
+
+func (stringService) Downcase(s string) (string, error) {
+	if s == "" {
+		return "", ErrEmpty
+	}
+	return strings.ToLower(s), nil
 }
 
 // ErrEmpty is returned when an input string is empty.

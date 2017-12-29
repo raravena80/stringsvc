@@ -35,6 +35,17 @@ func (mw instrmw) Uppercase(s string) (output string, err error) {
 	return
 }
 
+func (mw instrmw) Downcase(s string) (output string, err error) {
+	defer func(begin time.Time) {
+		lvs := []string{"method", "downcase", "error", fmt.Sprint(err != nil)}
+		mw.requestCount.With(lvs...).Add(1)
+		mw.requestLatency.With(lvs...).Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	output, err = mw.StringService.Downcase(s)
+	return
+}
+
 func (mw instrmw) Count(s string) (n int) {
 	defer func(begin time.Time) {
 		lvs := []string{"method", "count", "error", "false"}

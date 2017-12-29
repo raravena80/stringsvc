@@ -40,26 +40,45 @@ func proxyingMiddleware(ctx context.Context, instances string, logger log.Logger
 	// by hand, you'd probably use package sd's support for your service
 	// discovery system.
 	var (
-		instanceList = split(instances)
-		endpointer   sd.FixedEndpointer
+		instanceList        = split(instances)
+		uppercaseEndpointer sd.FixedEndpointer
+		downcaseEndpointer  sd.FixedEndpointer
 	)
+
 	logger.Log("proxy_to", fmt.Sprint(instanceList))
+	// Proxy to Uppercase endpoint
 	for _, instance := range instanceList {
-		var e endpoint.Endpoint
-		e = makeUppercaseProxy(ctx, instance)
-		e = circuitbreaker.Gobreaker(gobreaker.NewCircuitBreaker(gobreaker.Settings{}))(e)
-		e = ratelimit.NewErroringLimiter(rate.NewLimiter(rate.Every(time.Second), qps))(e)
-		endpointer = append(endpointer, e)
+		// eu as in endpointUppercase
+		var eu endpoint.Endpoint
+		eu = makeUppercaseProxy(ctx, instance)
+		eu = circuitbreaker.Gobreaker(gobreaker.NewCircuitBreaker(gobreaker.Settings{}))(eu)
+		eu = ratelimit.NewErroringLimiter(rate.NewLimiter(rate.Every(time.Second), qps))(eu)
+		uppercaseEndpointer = append(uppercaseEndpointer, eu)
 	}
 
 	// Now, build a single, retrying, load-balancing endpoint out of all of
-	// those individual endpoints.
-	balancer := lb.NewRoundRobin(endpointer)
-	retry := lb.Retry(maxAttempts, maxTime, balancer)
+	// those individual endpoints for Uppercase
+	uppercaseBalancer := lb.NewRoundRobin(uppercaseEndpointer)
+	uppercaseRetry := lb.Retry(maxAttempts, maxTime, uppercaseBalancer)
+
+	// Proxy to Downcase endpoint
+	for _, instance := range instanceList {
+		// ed as in endpointDowncase
+		var ed endpoint.Endpoint
+		ed = makeDowncaseProxy(ctx, instance)
+		ed = circuitbreaker.Gobreaker(gobreaker.NewCircuitBreaker(gobreaker.Settings{}))(ed)
+		ed = ratelimit.NewErroringLimiter(rate.NewLimiter(rate.Every(time.Second), qps))(ed)
+		downcaseEndpointer = append(downcaseEndpointer, ed)
+	}
+
+	// Now, build a single, retrying, load-balancing endpoint out of all of
+	// those individual endpoints for Downcase
+	downcaseBalancer := lb.NewRoundRobin(downcaseEndpointer)
+	downcaseRetry := lb.Retry(maxAttempts, maxTime, downcaseBalancer)
 
 	// And finally, return the ServiceMiddleware, implemented by proxymw.
 	return func(next StringService) StringService {
-		return proxymw{ctx, next, retry}
+		return proxymw{ctx, next, uppercaseRetry, downcaseRetry}
 	}
 }
 
@@ -70,6 +89,7 @@ type proxymw struct {
 	ctx       context.Context
 	next      StringService     // Serve most requests via this service...
 	uppercase endpoint.Endpoint // ...except Uppercase, which gets served by this endpoint
+	downcase  endpoint.Endpoint // Also this one
 }
 
 func (mw proxymw) Count(s string) int {
@@ -83,6 +103,19 @@ func (mw proxymw) Uppercase(s string) (string, error) {
 	}
 
 	resp := response.(uppercaseResponse)
+	if resp.Err != "" {
+		return resp.V, errors.New(resp.Err)
+	}
+	return resp.V, nil
+}
+
+func (mw proxymw) Downcase(s string) (string, error) {
+	response, err := mw.downcase(mw.ctx, downcaseRequest{S: s})
+	if err != nil {
+		return "", err
+	}
+
+	resp := response.(downcaseResponse)
 	if resp.Err != "" {
 		return resp.V, errors.New(resp.Err)
 	}
@@ -105,6 +138,25 @@ func makeUppercaseProxy(ctx context.Context, instance string) endpoint.Endpoint 
 		u,
 		encodeRequest,
 		decodeUppercaseResponse,
+	).Endpoint()
+}
+
+func makeDowncaseProxy(ctx context.Context, instance string) endpoint.Endpoint {
+	if !strings.HasPrefix(instance, "http") {
+		instance = "http://" + instance
+	}
+	u, err := url.Parse(instance)
+	if err != nil {
+		panic(err)
+	}
+	if u.Path == "" {
+		u.Path = "/downcase"
+	}
+	return httptransport.NewClient(
+		"GET",
+		u,
+		encodeRequest,
+		decodeDowncaseResponse,
 	).Endpoint()
 }
 
