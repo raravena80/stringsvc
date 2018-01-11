@@ -60,3 +60,17 @@ func (mw logmw) Count(s string) (n int) {
 	n = mw.StringService.Count(s)
 	return
 }
+
+func (mw logmw) Palindrome(s string) (p bool, err error) {
+	defer func(begin time.Time) {
+		_ = mw.logger.Log(
+			"method", "palindrome",
+			"input", s,
+			"p", p,
+			"took", time.Since(begin),
+		)
+	}(time.Now())
+
+	p, err = mw.StringService.Palindrome(s)
+	return
+}

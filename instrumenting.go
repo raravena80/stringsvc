@@ -57,3 +57,14 @@ func (mw instrmw) Count(s string) (n int) {
 	n = mw.StringService.Count(s)
 	return
 }
+
+func (mw instrmw) Palindrome(s string) (p bool, err error) {
+	defer func(begin time.Time) {
+		lvs := []string{"method", "palindrome", "error", "false"}
+		mw.requestCount.With(lvs...).Add(1)
+		mw.requestLatency.With(lvs...).Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	p, err = mw.StringService.Palindrome(s)
+	return
+}

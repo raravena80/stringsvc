@@ -67,9 +67,16 @@ func main() {
 		encodeResponse,
 	)
 
+	palindromeHandler := httptransport.NewServer(
+		makeCountEndpoint(svc),
+		decodeCountRequest,
+		encodeResponse,
+	)
+
 	http.Handle("/uppercase", uppercaseHandler)
 	http.Handle("/downcase", downcaseHandler)
 	http.Handle("/count", countHandler)
+	http.Handle("/palindrome", palindromeHandler)
 	http.Handle("/metrics", promhttp.Handler())
 	logger.Log("msg", "HTTP", "addr", *listen)
 	logger.Log("err", http.ListenAndServe(*listen, nil))
