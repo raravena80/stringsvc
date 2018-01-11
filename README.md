@@ -33,4 +33,8 @@ curl -XPOST http://localhost:8080/uppercase -d '{"s": "my happy string"}'
 {"v":"MY HAPPY STRING"}
 curl -XPOST http://localhost:8080/downcase -d '{"s": "MY HAPPY STRING"}'
 {"v":"my happy string"}
+$ curl -XPOST http://localhost:8080/palindrome -d '{"s": "MY HAPPY STRING"}'
+{"v":false}
+$ curl -XPOST http://localhost:8080/palindrome -d '{"s": "ana"}'
+{"v":true}
 ```
