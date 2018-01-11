@@ -68,8 +68,8 @@ func main() {
 	)
 
 	palindromeHandler := httptransport.NewServer(
-		makeCountEndpoint(svc),
-		decodeCountRequest,
+		makePalindromeEndpoint(svc),
+		decodePalindromeRequest,
 		encodeResponse,
 	)
 
