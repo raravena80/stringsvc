@@ -40,6 +40,17 @@ func makeDowncaseEndpoint(svc StringService) endpoint.Endpoint {
 	}
 }
 
+func makePalindromeEndpoint(svc StringService) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		req := request.(palindromeRequest)
+		v, err := svc.Palindrome(req.S)
+		if err != nil {
+			return palindromeResponse{v, err.Error()}, nil
+		}
+		return palindromeResponse{v, ""}, nil
+	}
+}
+
 func decodeUppercaseRequest(_ context.Context, r *http.Request) (interface{}, error) {
 	var request uppercaseRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -64,6 +75,14 @@ func decodeCountRequest(_ context.Context, r *http.Request) (interface{}, error)
 	return request, nil
 }
 
+func decodePalindromeRequest(_ context.Context, r *http.Request) (interface{}, error) {
+	var request palindromeRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
 func decodeUppercaseResponse(_ context.Context, r *http.Response) (interface{}, error) {
 	var response uppercaseResponse
 	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
@@ -74,6 +93,14 @@ func decodeUppercaseResponse(_ context.Context, r *http.Response) (interface{}, 
 
 func decodeDowncaseResponse(_ context.Context, r *http.Response) (interface{}, error) {
 	var response downcaseResponse
+	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func decodePalindromeResponse(_ context.Context, r *http.Response) (interface{}, error) {
+	var response palindromeResponse
 	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
 		return nil, err
 	}
@@ -117,4 +144,13 @@ type countRequest struct {
 
 type countResponse struct {
 	V int `json:"v"`
+}
+
+type palindromeRequest struct {
+	S string `json:"s"`
+}
+
+type palindromeResponse struct {
+	V   bool   `json:"v"`
+	Err string `json:"err,omitempty"`
 }

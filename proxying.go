@@ -40,9 +40,10 @@ func proxyingMiddleware(ctx context.Context, instances string, logger log.Logger
 	// by hand, you'd probably use package sd's support for your service
 	// discovery system.
 	var (
-		instanceList        = split(instances)
-		uppercaseEndpointer sd.FixedEndpointer
-		downcaseEndpointer  sd.FixedEndpointer
+		instanceList         = split(instances)
+		uppercaseEndpointer  sd.FixedEndpointer
+		downcaseEndpointer   sd.FixedEndpointer
+		palindromeEndpointer sd.FixedEndpointer
 	)
 
 	logger.Log("proxy_to", fmt.Sprint(instanceList))
@@ -76,9 +77,24 @@ func proxyingMiddleware(ctx context.Context, instances string, logger log.Logger
 	downcaseBalancer := lb.NewRoundRobin(downcaseEndpointer)
 	downcaseRetry := lb.Retry(maxAttempts, maxTime, downcaseBalancer)
 
+	// Proxy to Palindrome endpoint
+	for _, instance := range instanceList {
+		// ep as in endpointPalindrome
+		var ep endpoint.Endpoint
+		ep = makeDowncaseProxy(ctx, instance)
+		ep = circuitbreaker.Gobreaker(gobreaker.NewCircuitBreaker(gobreaker.Settings{}))(ep)
+		ep = ratelimit.NewErroringLimiter(rate.NewLimiter(rate.Every(time.Second), qps))(ep)
+		palindromeEndpointer = append(palindromeEndpointer, ep)
+	}
+
+	// Now, build a single, retrying, load-balancing endpoint out of all of
+	// those individual endpoints for Palindrome
+	palindromeBalancer := lb.NewRoundRobin(palindromeEndpointer)
+	palindromeRetry := lb.Retry(maxAttempts, maxTime, palindromeBalancer)
+
 	// And finally, return the ServiceMiddleware, implemented by proxymw.
 	return func(next StringService) StringService {
-		return proxymw{ctx, next, uppercaseRetry, downcaseRetry}
+		return proxymw{ctx, next, uppercaseRetry, downcaseRetry, palindromeRetry}
 	}
 }
 
@@ -86,10 +102,11 @@ func proxyingMiddleware(ctx context.Context, instances string, logger log.Logger
 // provided endpoint, and serving all other (i.e. Count) requests via the
 // next StringService.
 type proxymw struct {
-	ctx       context.Context
-	next      StringService     // Serve most requests via this service...
-	uppercase endpoint.Endpoint // ...except Uppercase, which gets served by this endpoint
-	downcase  endpoint.Endpoint // Also this one
+	ctx        context.Context
+	next       StringService     // Serve most requests via this service...
+	uppercase  endpoint.Endpoint // ...except Uppercase, which gets served by this endpoint
+	downcase   endpoint.Endpoint // Also this one
+	palindrome endpoint.Endpoint // Also this one
 }
 
 func (mw proxymw) Count(s string) int {
@@ -116,6 +133,19 @@ func (mw proxymw) Downcase(s string) (string, error) {
 	}
 
 	resp := response.(downcaseResponse)
+	if resp.Err != "" {
+		return resp.V, errors.New(resp.Err)
+	}
+	return resp.V, nil
+}
+
+func (mw proxymw) Palindrome(s string) (bool, error) {
+	response, err := mw.palindrome(mw.ctx, downcaseRequest{S: s})
+	if err != nil {
+		return false, err
+	}
+
+	resp := response.(palindromeResponse)
 	if resp.Err != "" {
 		return resp.V, errors.New(resp.Err)
 	}
@@ -157,6 +187,25 @@ func makeDowncaseProxy(ctx context.Context, instance string) endpoint.Endpoint {
 		u,
 		encodeRequest,
 		decodeDowncaseResponse,
+	).Endpoint()
+}
+
+func makePalindromeProxy(ctx context.Context, instance string) endpoint.Endpoint {
+	if !strings.HasPrefix(instance, "http") {
+		instance = "http://" + instance
+	}
+	u, err := url.Parse(instance)
+	if err != nil {
+		panic(err)
+	}
+	if u.Path == "" {
+		u.Path = "/palindrome"
+	}
+	return httptransport.NewClient(
+		"GET",
+		u,
+		encodeRequest,
+		decodePalindromeResponse,
 	).Endpoint()
 }
 
